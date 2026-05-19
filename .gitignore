@@ -11,4 +11,6 @@ wheels/
 
 # Local automation artifacts
 backups/
+old_backups/
 .env
+.stax/

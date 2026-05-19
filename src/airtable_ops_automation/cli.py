@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,7 @@ def load_banner(command: str | None = None) -> str:
         "/___/ /_/ /___,'  (___7//\\\\(___7|_,'  ⚡"
     )
     border = "=" * 56
-    return f"{border}\n{art}\n{border}\nLIB ⚡ OPS"
+    return f"{border}\n{art}\n{border}\n"
 
 
 class ColorFormatter(logging.Formatter):
@@ -301,6 +302,30 @@ def cmd_snapshot_base(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_snapshot_base_if_stale(args: argparse.Namespace) -> int:
+    backup_root = Path(args.backup_dir)
+    backup_root.mkdir(parents=True, exist_ok=True)
+
+    latest_mtime = 0.0
+    for path in backup_root.glob("base_snapshot_*"):
+        if path.is_dir():
+            latest_mtime = max(latest_mtime, path.stat().st_mtime)
+
+    now = time.time()
+    max_age_seconds = args.max_age_minutes * 60
+    age_seconds = now - latest_mtime if latest_mtime else None
+
+    if age_seconds is not None and age_seconds < max_age_seconds:
+        LOG.info(
+            "⚡ Snapshot is fresh (%s min old). Skipping.",
+            round(age_seconds / 60, 1),
+        )
+        return 0
+
+    LOG.info("⚡ Snapshot is stale or missing. Running snapshot now.")
+    return cmd_snapshot_base(args)
+
+
 def cmd_split_csv_by_artist(args: argparse.Namespace) -> int:
     token = env_or_required(args.token, "AIRTABLE_PAT", "--token")
     base_id = env_or_required(args.base_id, "AIRTABLE_BASE_ID", "--base-id")
@@ -539,6 +564,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Snapshot output format (default: both)",
     )
     snapshot_cmd.set_defaults(func=cmd_snapshot_base)
+
+    snapshot_if_stale_cmd = subparsers.add_parser(
+        "snapshot-base-if-stale",
+        parents=[common],
+        help="Run base snapshot only when older than threshold",
+    )
+    snapshot_if_stale_cmd.add_argument(
+        "--backup-dir",
+        default="backups",
+        help="Directory to store snapshot files (default: backups)",
+    )
+    snapshot_if_stale_cmd.add_argument(
+        "--include",
+        help="Optional comma-separated table names/ids to snapshot",
+    )
+    snapshot_if_stale_cmd.add_argument(
+        "--output-format",
+        choices=["csv", "json", "both"],
+        default="both",
+        help="Snapshot output format (default: both)",
+    )
+    snapshot_if_stale_cmd.add_argument(
+        "--max-age-minutes",
+        type=int,
+        default=60,
+        help="Only snapshot if older than this many minutes (default: 60)",
+    )
+    snapshot_if_stale_cmd.set_defaults(func=cmd_snapshot_base_if_stale)
 
     split_cmd = subparsers.add_parser(
         "split-artist-csv",

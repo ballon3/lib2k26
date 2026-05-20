@@ -80,6 +80,18 @@ class AirtableClient:
             )
             response.raise_for_status()
 
+    def create_records(self, table: str, records: list[dict[str, Any]]) -> None:
+        for idx in range(0, len(records), 10):
+            chunk = records[idx : idx + 10]
+            payload = {"records": [{"fields": row} for row in chunk]}
+            response = requests.post(
+                self._url(table),
+                headers=self._headers,
+                data=json.dumps(payload),
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+
 
 def write_backup(
     output_dir: Path,

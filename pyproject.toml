@@ -8,12 +8,15 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.116.0",
     "python-dotenv>=1.0.1",
     "requests>=2.32.0",
+    "uvicorn>=0.35.0",
 ]
 
 [project.scripts]
 lib2k26 = "airtable_ops_automation.cli:main"
+lib2k26-api = "airtable_ops_automation.run_api:main"
 
 [build-system]
 requires = ["hatchling"]

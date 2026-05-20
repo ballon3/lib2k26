@@ -16,6 +16,7 @@ import requests
 from dotenv import load_dotenv
 
 from airtable_ops_automation.airtable import AirtableClient, slugify, write_backup, write_backup_csv
+from airtable_ops_automation.sheet_to_airtable import FlowConfig, load_rows_from_source, prepare_rows
 
 LOG = logging.getLogger("lib2k26")
 
@@ -450,6 +451,47 @@ def cmd_split_local_csv(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sync_sheet_to_airtable(args: argparse.Namespace) -> int:
+    token = env_or_required(args.token, "AIRTABLE_PAT", "--token")
+    base_id = env_or_required(args.base_id, "AIRTABLE_BASE_ID", "--base-id")
+    client = AirtableClient(token=token, base_id=base_id)
+
+    config_path = Path(args.config).resolve()
+    config = FlowConfig.from_file(config_path)
+
+    rows = load_rows_from_source(config.source_csv, config_path)
+    prepared, errors = prepare_rows(rows, config)
+    for error in errors:
+        LOG.warning(error)
+
+    LOG.info("⚡ Prepared %s line items from source sheet export", len(prepared))
+    if not prepared:
+        LOG.info("⚡ No valid rows to sync.")
+        return 0
+
+    if args.backup_target:
+        target_records = client.list_records(config.target_table)
+        ts = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+        backup_dir = Path(args.backup_dir) / f"sync_target_{slugify(config.target_table)}_{ts}"
+        backup_paths = write_backups_for_format(
+            output_dir=backup_dir,
+            table_name=slugify(config.target_table),
+            records=target_records,
+            output_format=args.output_format,
+        )
+        for backup_path in backup_paths:
+            LOG.info("⚡ Target backup saved to %s", backup_path)
+
+    if args.dry_run:
+        LOG.info("⚡ Dry run enabled. Skipping Airtable writes.")
+        return 0
+
+    payload = [row.fields for row in prepared]
+    client.create_records(table=config.target_table, records=payload)
+    LOG.info("⚡ Created %s records in table '%s'", len(payload), config.target_table)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LIB ⚡ OPS CLI ⚡")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
@@ -654,6 +696,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory to store split files (default: backups)",
     )
     split_local_cmd.set_defaults(func=cmd_split_local_csv)
+
+    sync_cmd = subparsers.add_parser(
+        "sync-sheet-to-airtable",
+        parents=[common],
+        help="Sync a sheet-export CSV into Airtable with reusable config",
+    )
+    sync_cmd.add_argument(
+        "--config",
+        required=True,
+        help="Path to JSON flow config",
+    )
+    sync_cmd.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate and preview row counts without writing to Airtable",
+    )
+    sync_cmd.add_argument(
+        "--backup-target",
+        action="store_true",
+        help="Backup current target table before sync",
+    )
+    sync_cmd.add_argument(
+        "--backup-dir",
+        default="backups",
+        help="Directory to store sync backups (default: backups)",
+    )
+    sync_cmd.add_argument(
+        "--output-format",
+        choices=["csv", "json", "both"],
+        default="both",
+        help="Backup output format for target backup (default: both)",
+    )
+    sync_cmd.set_defaults(func=cmd_sync_sheet_to_airtable)
 
     return parser
 

@@ -1,0 +1,13 @@
+{
+  "source_csv": "lib26_vendor_options.csv",
+  "target_table": "Artist Food Orders",
+  "field_map": {
+    "artist": "Artist",
+    "vendor": "Vendor",
+    "item": "Item",
+    "quantity": "Quantity",
+    "requested_time": "Requested Time"
+  },
+  "order_key_columns": ["artist", "requested_time"],
+  "max_vendors": 2
+}

@@ -108,3 +108,90 @@ Keep these backups in git-ignored local storage or sync to your internal backup 
 3. Run `fill-group-column --dry-run` and inspect logs + backup CSV.
 4. Run apply mode on test copy.
 5. Validate records, then run same command on production table.
+
+## Reusable Google Sheet CSV -> Airtable flow
+
+This flow is designed as a reusable config-driven command for new ops automations.
+
+1. Export your Google Sheet tab as CSV and place it in this repo.
+2. Copy `config/sheet_to_airtable.flow.example.json` to a new config file.
+3. Update `source_csv`, `target_table`, and the `field_map` keys to match your sheet columns and Airtable fields.
+
+Dry run (recommended first):
+
+```bash
+uv run lib2k26 sync-sheet-to-airtable \
+  --config config/sheet_to_airtable.flow.example.json \
+  --dry-run
+```
+
+Apply with target backup:
+
+```bash
+uv run lib2k26 sync-sheet-to-airtable \
+  --config config/sheet_to_airtable.flow.example.json \
+  --backup-target
+```
+
+Behavior:
+
+- Enforces max vendor count per order key (`max_vendors`, default `2`).
+- Skips invalid rows and logs warnings.
+- Optional target-table backup before write.
+- Creates one Airtable record per valid line item.
+
+## React + FastAPI order app
+
+If Google Forms is too limiting, use this lightweight stack:
+
+- FastAPI backend reads menu options from `config/lib26_vendor_options.csv`
+- React frontend enforces max 2 vendors and quantity per item
+- Backend validates each item belongs to the selected vendor and writes to Airtable
+
+### Environment
+
+Set these in `.env`:
+
+```bash
+AIRTABLE_PAT="pat..."
+AIRTABLE_BASE_ID="app..."
+AIRTABLE_ORDER_TABLE="Artist Food Orders"
+MENU_CSV_PATH="config/lib26_vendor_options.csv"
+ORDER_API_HOST="0.0.0.0"
+ORDER_API_PORT="8000"
+```
+
+### Run backend
+
+```bash
+uv sync
+uv run lib2k26-api
+```
+
+### Run frontend
+
+```bash
+cd web/order-form
+npm install
+npm run dev
+```
+
+If your API is on a different host/port:
+
+```bash
+VITE_API_BASE="http://localhost:8000" npm run dev
+```
+
+### Core endpoints
+
+- `GET /api/vendors`
+- `GET /api/vendors/{vendor}/items`
+- `POST /api/orders`
+
+thurs,friday,saturday,sunday (start/end)
+11/12am, 11/2am,11/3am,11/3am - Kaliko's Hawaiian Kitchen
+9/11pm,9/2am,9/2am,9/2am, - Asana Foods - California Cuisine
+24hr,24hr,24hr,24hr - Bombay Burritos
+8/10pm,8/10pm,8/10pm,8/12am- Senor Corn - Lightning
+9am/4am,9am/4am,9am/4am,9am/4am - Connection Cafe
+11am/10pm,10am/12am,12am/12am,12am/12am - Stay Cheesy
